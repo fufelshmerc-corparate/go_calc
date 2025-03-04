@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-
 func getEnvDuration(envVar string, defaultValue int) time.Duration {
 	value, err := strconv.Atoi(os.Getenv(envVar))
 	if err != nil {
@@ -30,7 +29,7 @@ func getServerURL() string {
 }
 
 func getTask() (*Task, error) {
-	
+
 	client := http.DefaultClient
 
 	resp, err := client.Get(getServerURL() + "/internal/task")
@@ -51,22 +50,23 @@ func getTask() (*Task, error) {
 }
 
 func performOperation(task *Task) (float64, error) {
-	
+
 	var result float64
 	var err error
 	switch task.Operation {
 	case "+":
-		time.Sleep(time.Duration(task.Operationtime)*time.Millisecond)
+		time.Sleep(time.Duration(task.Operationtime) * time.Millisecond)
 		result = task.Arg1 + task.Arg2
 	case "-":
-		time.Sleep(time.Duration(task.Operationtime)*time.Millisecond)
+		time.Sleep(time.Duration(task.Operationtime) * time.Millisecond)
 		result = task.Arg1 - task.Arg2
 	case "*":
-		time.Sleep(time.Duration(task.Operationtime)*time.Millisecond)
+		time.Sleep(time.Duration(task.Operationtime) * time.Millisecond)
 		result = task.Arg1 * task.Arg2
 	case "/":
-		time.Sleep(time.Duration(task.Operationtime)*time.Millisecond)
+		time.Sleep(time.Duration(task.Operationtime) * time.Millisecond)
 		if task.Arg2 == 0 {
+			result = 0
 			err = fmt.Errorf("деление на ноль")
 		} else {
 			result = task.Arg1 / task.Arg2
@@ -97,7 +97,7 @@ func postResult(result *Result) error {
 
 func clientWorker(wg *sync.WaitGroup) {
 	defer wg.Done()
-	timeout := getEnvDuration("TIME_TIMEOUT_MS", 100) 
+	timeout := getEnvDuration("TIME_TIMEOUT_MS", 100)
 
 	for {
 		task, err := getTask()
@@ -107,7 +107,7 @@ func clientWorker(wg *sync.WaitGroup) {
 		}
 
 		result, err := performOperation(task)
-		
+
 		if err != nil {
 			log.Printf("деление на 0")
 			continue
