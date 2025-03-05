@@ -63,7 +63,7 @@ go run cmd/main.go
 скопируйте путь до файла site.html 
 - например file:///C:/YandexGO/2_Final/cmd/site.html
 
- это в браузер
+ вставте это в браузер
 
 
 ## Windows (cmd.exe)
