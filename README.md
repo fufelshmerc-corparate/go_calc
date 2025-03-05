@@ -58,6 +58,14 @@ graph TD
 
 go run cmd/main.go
 
+# Запуск web
+
+скопируйте путь до файла site.html 
+- например file:///C:/YandexGO/2_Final/cmd/site.html
+
+ это в браузер
+
+
 ## Windows (cmd.exe)
 
 

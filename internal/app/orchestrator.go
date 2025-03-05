@@ -41,13 +41,12 @@ var (
 	TIME_D           = 100
 	processing       = make(map[string]bool)
 	expressions      = make(map[string]*Expression)
-	tasks            = make([]*Task, 0)         
-	results          = make(map[string]float64) 
+	tasks            = make([]*Task, 0)
+	results          = make(map[string]float64)
 	mu               sync.Mutex
-	taskIDCounter    uint64 
+	taskIDCounter    uint64
 	genTaskIDCounter uint64
 )
-
 
 func handleTask(w http.ResponseWriter, r *http.Request) {
 	switch {
@@ -91,7 +90,6 @@ func handleTask(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 func eval(expr ast.Expr) (float64, error) {
 	switch e := expr.(type) {
 	case *ast.BasicLit:
@@ -101,10 +99,10 @@ func eval(expr ast.Expr) (float64, error) {
 		return eval(e.X)
 
 	case *ast.BinaryExpr:
-		
+
 		leftCh := make(chan float64)
 		rightCh := make(chan float64)
-		errCh := make(chan error, 2) 
+		errCh := make(chan error, 2)
 
 		go func() {
 			left, err := eval(e.X)
@@ -136,7 +134,7 @@ func eval(expr ast.Expr) (float64, error) {
 		case err := <-errCh:
 			return 0, err
 		}
-		if right == 0{
+		if right == 0 {
 			return 0, fmt.Errorf("деление на 0")
 		}
 		taskID := fmt.Sprintf("%d", atomic.AddUint64(&taskIDCounter, 1))
@@ -165,7 +163,6 @@ func eval(expr ast.Expr) (float64, error) {
 		tasks = append(tasks, task)
 		mu.Unlock()
 
-
 		resultCh := make(chan float64)
 
 		go func() {
@@ -178,7 +175,7 @@ func eval(expr ast.Expr) (float64, error) {
 					return
 				}
 				mu.Unlock()
-				time.Sleep(100 * time.Millisecond) 
+				time.Sleep(100 * time.Millisecond)
 			}
 		}()
 
@@ -202,7 +199,7 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ошибка декодирования", http.StatusBadRequest)
 		return
 	}
-	if input.Expression == ""{
+	if input.Expression == "" {
 		http.Error(w, "StatusUnprocessableEntity", http.StatusUnprocessableEntity)
 		return
 	}
@@ -263,7 +260,20 @@ func expressionByIDHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(expr)
 }
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
 func Runorchestrator() {
 
 	port := os.Getenv("PORT")
@@ -300,12 +310,12 @@ func Runorchestrator() {
 			return
 		}
 	}
-	
-	http.HandleFunc("/api/v1/calculate", handleCalculate)
-	http.HandleFunc("/internal/task", handleTask)
-	http.HandleFunc("/api/v1/expressions", handleExpressions)
-	http.HandleFunc("/api/v1/expressions/", expressionByIDHandler)
+	mux := http.NewServeMux()
+	handler := enableCORS(mux)
+	mux.HandleFunc("/api/v1/calculate", handleCalculate)
+	mux.HandleFunc("/internal/task", handleTask)
+	mux.HandleFunc("/api/v1/expressions", handleExpressions)
+	mux.HandleFunc("/api/v1/expressions/", expressionByIDHandler)
 	fmt.Println("Сервер запущен на порту", port)
-	http.ListenAndServe(":"+port, nil)
+	http.ListenAndServe(":"+port, handler)
 }
-
