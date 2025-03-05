@@ -18,7 +18,7 @@ type Expression struct {
 	ID         string   `json:"id"`
 	Expression string   `json:"expression"`
 	Status     string   `json:"status"`
-	Result     *float64 `json:"result"`
+	Result     *float64 `json:"result,omitempty"`
 }
 
 type Task struct {
@@ -216,7 +216,7 @@ func handleCalculate(w http.ResponseWriter, r *http.Request) {
 	go func(genTaskID string) {
 		expr, err := parser.ParseExpr(input.Expression)
 		if err != nil {
-			http.Error(w, "Ошибка парсинга выражения", http.StatusBadRequest)
+			expressions[genTaskID].Status = "error"
 			return
 		}
 
@@ -300,7 +300,7 @@ func Runorchestrator() {
 			return
 		}
 	}
-
+	
 	http.HandleFunc("/api/v1/calculate", handleCalculate)
 	http.HandleFunc("/internal/task", handleTask)
 	http.HandleFunc("/api/v1/expressions", handleExpressions)
@@ -308,3 +308,4 @@ func Runorchestrator() {
 	fmt.Println("Сервер запущен на порту", port)
 	http.ListenAndServe(":"+port, nil)
 }
+

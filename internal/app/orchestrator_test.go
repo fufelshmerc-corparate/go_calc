@@ -47,6 +47,13 @@ func TestCalculateAndCheckResult(t *testing.T) {
 			expectResult: 1,
 			expectStatus: "completed",
 		},
+		{
+			name:         "деление на 0",
+			input:        `{"expression": "1/0"}`,
+			expectCode:   http.StatusCreated,
+			expectResult: 0,
+			expectStatus: "error",
+		},
 	}
 
 	for _, tc := range tests {
@@ -84,13 +91,18 @@ func TestCalculateAndCheckResult(t *testing.T) {
 		if err := json.NewDecoder(getResp.Body).Decode(&getResponse); err != nil {
 			t.Fatalf("Ошибка декодирования ответа от GET-запроса: %v", err)
 		}
-		
+		if getResponse.Status != tc.expectStatus {
+			t.Errorf("%s: ожидался результат %s, получено: %s", tc.name, tc.expectStatus, getResponse.Status)
+			
+		}
+		if getResponse.Status == "error"{
+			continue
+		}
+
 		if *getResponse.Result != tc.expectResult {
 			t.Errorf("%s: ожидался результат %f, получено: %f", tc.name, tc.expectResult, *getResponse.Result)
 		}
-		if getResponse.Status != tc.expectStatus {
-			t.Errorf("%s: ожидался результат %s, получено: %s", tc.name, tc.expectStatus, getResponse.Status)
-		}
+		
 		
 		
 	}
