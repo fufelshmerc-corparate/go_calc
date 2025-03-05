@@ -52,7 +52,7 @@ graph TD
 
 - Поддерживаемые операции: `+`, `-`, `*`, `/`
 - Приоритет операций и скобки
-- Параллельное выполнение операций
+- Параллельное выполнение операций(если количество запущенных агентов больше 1)
 
 # Запуск 
 
@@ -65,10 +65,10 @@ go run cmd/main.go
 
 - set PORT= 8082 //порт
 - set COMPUTING_POWER=1 //количество агентов
-- set TIME_ADDITION_MS=200 //время сложения
-- set TIME_SUBTRACTION_MS=200 //время вычитания
-- set TIME_MULTIPLICATIONS_MS=200 //время умножения
-- set TIME_DIVISIONS_MS=200 //время деления
+- set TIME_ADDITION_MS=100 //время сложения
+- set TIME_SUBTRACTION_MS=100 //время вычитания
+- set TIME_MULTIPLICATIONS_MS=100 //время умножения
+- set TIME_DIVISIONS_MS=100 //время деления
 - здесь пример значений которые установлены по умолчанию
 
 
@@ -85,7 +85,9 @@ curl --location 'http://localhost:8082/api/v1/calculate' \
   "expression": "(2+3)*4-10/2"
 }'
 ```
-
+```
+curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\\"expression\\": \\"2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2\\"}"
+```
 Успешный ответ (201):
 
 ```json
