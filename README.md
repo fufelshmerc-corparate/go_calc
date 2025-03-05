@@ -209,6 +209,7 @@ curl http://localhost:8080/api/v1/expressions
 ```
 
 ### Сценарий 2: Ошибка деления на ноль
+WINDOWS(cmd)
 
 ```curl
 curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"1/0\"}"
