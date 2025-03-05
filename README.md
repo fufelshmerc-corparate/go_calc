@@ -144,9 +144,9 @@ curl http://localhost:8082/api/v1/expressions/1
     "status": "completed",
     "result": 92
 }
-
+или
 {
-    "id": "2",
+    "id": "1",
     "expression": "2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2",
     "status": "processing"
 }
@@ -175,7 +175,7 @@ curl http://localhost:8082/internal/task
 ### 2. Отправка результата
 WINDOWS(cmd)
 ```bash
-C:\Users\Иван>curl -X POST "http://localhost:8082/internal/task" ^ -H "Content-Type: application/json" ^ -d "{\"id\": \"51\", \"result\": 4}"
+curl -X POST "http://localhost:8082/internal/task" ^ -H "Content-Type: application/json" ^ -d "{\"id\": \"51\", \"result\": 4}"
 ```
 
 Пример запроса:
