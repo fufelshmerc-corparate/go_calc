@@ -7,13 +7,15 @@
 1. **Клонируйте репозиторий**:
     ```
     git clone https://github.com/IvanSolomatin/calc_v2
-    cd calc_go
     ```
 
 2. **Убедитесь, что установлен go 1.23.1+**:
     ```
     go version
     ```
+
+3. **Перейдите в коренвую папку проекта**:
+
 
 
 ---
@@ -61,13 +63,13 @@ go run cmd/main.go
 
 ### Установка переменных среды
 
-set PORT= 8082 //порт
-set COMPUTING_POWER=1 //количество агентов
-set TIME_ADDITION_MS=200 //время сложения
-set TIME_SUBTRACTION_MS=200 //время вычитания
-set TIME_MULTIPLICATIONS_MS=200 //время умножения
-set TIME_DIVISIONS_MS=200 //время деления
-здесь пример значений которые установлены по умолчанию
+-set PORT= 8082 //порт
+-set COMPUTING_POWER=1 //количество агентов
+-set TIME_ADDITION_MS=200 //время сложения
+-set TIME_SUBTRACTION_MS=200 //время вычитания
+-set TIME_MULTIPLICATIONS_MS=200 //время умножения
+-set TIME_DIVISIONS_MS=200 //время деления
+-здесь пример значений которые установлены по умолчанию
 
 
 ## API Endpoints
