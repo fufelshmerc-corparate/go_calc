@@ -180,7 +180,7 @@ C:\Users\Иван>curl -X POST "http://localhost:8082/internal/task" ^ -H "Conte
 
 Пример запроса:
 
-```json
+```
     200 - успешно записан результат
 ```
 
