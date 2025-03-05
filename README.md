@@ -85,8 +85,9 @@ curl --location 'http://localhost:8082/api/v1/calculate' \
   "expression": "(2+3)*4-10/2"
 }'
 ```
+WINDOWS(cmd)
 ```
-curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\\"expression\\": \\"2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2\\"}"
+curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2\"}"
 ```
 Успешный ответ (201):
 
@@ -97,6 +98,9 @@ curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: applic
 ```
 
 ### 2. Получение списка выражений
+```bash
+curl http://localhost:8082/api/v1/expressions
+```
 
 Пример ответа (200):
 
@@ -105,13 +109,18 @@ curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: applic
     "expressions": [
         {
             "id": "1",
-            "expression": "(2+3)*4-10/2",
+            "expression": "2+2",
             "status": "completed",
-            "result": 15
+            "result": 4
+        },
+        {
+            "id": "1",
+            "expression": "2+2+2+2+2+2++2+2++2+2++2+2++2+2",
+            "status": "processing",
         },
         {
             "id": "2",
-            "expression": "8/(4-4)",
+            "expression": "8/0",
             "status": "error",
         }
     ]
@@ -164,56 +173,56 @@ curl http://localhost:8082/internal/task
 ```
 
 ### 2. Отправка результата
-
-```curl
-curl -X POST "http://localhost:8082/internal/task" ^ -H "Content-Type: application/json" ^ -d "{"id": "1", "result": 5}"  
+WINDOWS(cmd)
+```bash
+C:\Users\Иван>curl -X POST "http://localhost:8082/internal/task" ^ -H "Content-Type: application/json" ^ -d "{\"id\": \"51\", \"result\": 4}"
 ```
 
 Пример запроса:
 
 ```json
-{
-  "id": "1",
-  "result": 4
-}
+    200 - успешно записан результат
 ```
 
 
 ## Примеры сценариев
 
 ### Сценарий 1: Успешное вычисление
+WINDOWS(cmd)
 
-```cmd
-curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{"expression": "1/1"}"
+```bash
+curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"1/1\"}"
 ```
 # Проверка статуса
 curl http://localhost:8080/api/v1/expressions
 
 # Ответ 
 ```
-{
-    "expression": {
-        "id": "1",
-        "status": "completed",
-        "result": 1
-    }
-}
+ "expressions": {
+        "1": {
+            "id": "1",
+            "expression": "1\1",
+            "status": "completed",
+            "result": 1
+        }
+ }
 ```
 
 ### Сценарий 2: Ошибка деления на ноль
 
 ```curl
-curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{"expression": "1/0"}"
+curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"1/0\"}"
 ```
 
 # Ответ:
 ```
-{
-    "expression": {
-        "id": "2",
-        "status": "error",
-    }
-}
+ "expressions": {
+        "1": {
+            "id": "1",
+            "expression": "1\0",
+            "status": "completed",
+        }
+ }
 ```
 
 ## Тестирование
