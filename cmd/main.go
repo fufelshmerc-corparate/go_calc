@@ -8,6 +8,6 @@ func main(){
 		app.RunAgentGRPC()
 	}()
 	
-	app.RunOrchestratorGRPC()
+	app.RunOrchestrator()
 	
 }
