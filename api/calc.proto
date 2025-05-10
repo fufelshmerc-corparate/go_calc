@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package calc;
+
+option go_package = "api/calc";
+
+service Orchestrator {
+  rpc GetTask (TaskRequest) returns (Task) {}
+  rpc SubmitResult (Result) returns (ResultResponse) {}
+}
+
+service Agent {
+  rpc Calculate (ExpressionRequest) returns (ExpressionResponse) {}
+}
+
+message TaskRequest {
+  string agent_id = 1;
+}
+
+message Task {
+  string id = 1;
+  double arg1 = 2;
+  double arg2 = 3;
+  string operation = 4;
+  int32 operation_time = 5;
+}
+
+message Result {
+  string id = 1;
+  double result = 2;
+}
+
+message ResultResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ExpressionRequest {
+  string expression = 1;
+  int32 user_id = 2;
+}
+
+message ExpressionResponse {
+  string id = 1;
+  string status = 2;
+  double result = 3;
+  string error = 4;
+}

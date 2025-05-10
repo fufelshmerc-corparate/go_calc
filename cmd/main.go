@@ -5,9 +5,9 @@ import(
 
 func main(){
 	go func(){
-		app.Runagent()
+		app.RunAgentGRPC()
 	}()
 	
-	app.Runorchestrator()
+	app.RunOrchestratorGRPC()
 	
 }
