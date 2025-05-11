@@ -1,145 +1,410 @@
 package app
 
 import (
-	"bytes"
+	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-
-	"encoding/json"
-	"fmt"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/dgrijalva/jwt-go"
+	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	pb "github.com/IvanSolomatin/calc_v2/api/calc"
 )
 
-func TestCalculateAndCheckResult(t *testing.T) {
-	go func() {
-		Runorchestrator()
-	}()
-	go func() {
-		Runagent()
-	}()
-	time.Sleep(7 * time.Second)
+func setupTestOrchestrator(t *testing.T) (*Orchestrator, *sql.DB, sqlmock.Sqlmock) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create sqlmock: %v", err)
+	}
+
+	jwtSecret := []byte("test-secret")
+	orch := NewOrchestrator(db, jwtSecret)
+
+	return orch, db, mock
+}
+
+func TestHandleRegister(t *testing.T) {
+	orch, db, mock := setupTestOrchestrator(t)
+	defer db.Close()
+
 	tests := []struct {
-		name         string
-		input        string
-		expectCode   int
-		expectResult float64
-		expectStatus string
+		name           string
+		body           string
+		mockSetup      func()
+		expectedStatus int
+		expectedBody   string
 	}{
 		{
-			name:         "Сложение",
-			input:        `{"expression": "2 + 2"}`,
-			expectCode:   http.StatusCreated,
-			expectResult: 4,
-			expectStatus: "completed",
+			name: "Valid registration",
+			body: `{"login":"testuser","password":"testpass"}`,
+			mockSetup: func() {
+				mock.ExpectExec("INSERT INTO users").
+					WithArgs("testuser", sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(1, 1))
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "OK",
 		},
 		{
-			name:         "вычитание и умножение",
-			input:        `{"expression": "2 * 2 - 2 * 2"}`,
-			expectCode:   http.StatusCreated,
-			expectResult: 0,
-			expectStatus: "completed",
+			name:           "Invalid JSON",
+			body:           `{"login":"testuser","password":}`,
+			mockSetup:      func() {},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid request body",
 		},
 		{
-			name:         "деление",
-			input:        `{"expression": "2/2"}`,
-			expectCode:   http.StatusCreated,
-			expectResult: 1,
-			expectStatus: "completed",
+			name:           "Missing login",
+			body:           `{"password":"testpass"}`,
+			mockSetup:      func() {},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Login and password are required",
 		},
 		{
-			name:         "деление на 0",
-			input:        `{"expression": "1/0"}`,
-			expectCode:   http.StatusCreated,
-			expectResult: 0,
-			expectStatus: "error",
+			name: "User already exists",
+			body: `{"login":"testuser","password":"testpass"}`,
+			mockSetup: func() {
+				mock.ExpectExec("INSERT INTO users").
+					WithArgs("testuser", sqlmock.AnyArg()).
+					WillReturnError(fmt.Errorf("UNIQUE constraint failed"))
+			},
+			expectedStatus: http.StatusConflict,
+			expectedBody:   "User already exists",
 		},
 	}
 
-	for _, tc := range tests {
-		
-		resp, err := http.Post("http://localhost:8082/api/v1/calculate", "application/json", bytes.NewBuffer([]byte(tc.input)))
-		if err != nil {
-			t.Fatalf("Ошибка при отправке POST-запроса: %v", err)
-		}
-		defer resp.Body.Close()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
 
-		if resp.StatusCode != tc.expectCode {
-			t.Errorf("%s: ожидался статус %d, получено: %d", tc.name, tc.expectCode, resp.StatusCode)
-			return
-		}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/register", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
 
-		var postResponse Expression
-		if err := json.NewDecoder(resp.Body).Decode(&postResponse); err != nil {
-			t.Fatalf("Ошибка декодирования ответа от POST-запроса: %v", err)
-		}
+			orch.handleRegister(w, req)
 
-		time.Sleep(5 * time.Second)
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
 
-		getResp, err := http.Get(fmt.Sprintf("http://localhost:8082/api/v1/expressions/%s", postResponse.ID))
-		if err != nil {
-			t.Fatalf("Ошибка при отправке GET-запроса: %v", err)
-		}
-		defer getResp.Body.Close()
+			if !strings.Contains(w.Body.String(), tt.expectedBody) {
+				t.Errorf("Expected body to contain %q, got %q", tt.expectedBody, w.Body.String())
+			}
 
-		if getResp.StatusCode != http.StatusOK {
-			t.Errorf("%s: GET-запрос вернул статус %d", tc.name, getResp.StatusCode)
-			return
-		}
-
-		var getResponse Expression
-		if err := json.NewDecoder(getResp.Body).Decode(&getResponse); err != nil {
-			t.Fatalf("Ошибка декодирования ответа от GET-запроса: %v", err)
-		}
-		if getResponse.Status != tc.expectStatus {
-			t.Errorf("%s: ожидался результат %s, получено: %s", tc.name, tc.expectStatus, getResponse.Status)
-			
-		}
-		if getResponse.Status == "error"{
-			continue
-		}
-
-		if *getResponse.Result != tc.expectResult {
-			t.Errorf("%s: ожидался результат %f, получено: %f", tc.name, tc.expectResult, *getResponse.Result)
-		}
-		
-		
-		
-	}
-	
-}
-
-func TestHandleTask_Get(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/internal/task", nil)
-	w := httptest.NewRecorder()
-
-	handleTask(w, req)
-
-	if w.Code == http.StatusNotFound {
-		t.Log("Ожидаемое поведение: нет задач")
-	} else if w.Code != http.StatusOK {
-		t.Errorf("неожиданный статус: %d", w.Code)
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("Unfulfilled expectations: %v", err)
+			}
+		})
 	}
 }
 
-func TestHandleExpressions(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/expressions", nil)
-	w := httptest.NewRecorder()
+func TestHandleLogin(t *testing.T) {
+	orch, db, mock := setupTestOrchestrator(t)
+	defer db.Close()
 
-	handleExpressions(w, req)
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("testpass"), bcrypt.DefaultCost)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("ожидался статус 200, получено: %d", w.Code)
+	tests := []struct {
+		name           string
+		body           string
+		mockSetup      func()
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "Valid login",
+			body: `{"login":"testuser","password":"testpass"}`,
+			mockSetup: func() {
+				mock.ExpectQuery("SELECT id, password FROM users").
+					WithArgs("testuser").
+					WillReturnRows(sqlmock.NewRows([]string{"id", "password"}).
+						AddRow(1, string(hashedPassword)))
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `"token":`,
+		},
+		{
+			name:           "Invalid JSON",
+			body:           `{"login":"testuser","password":}`,
+			mockSetup:      func() {},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid request body",
+		},
+		{
+			name: "Invalid credentials",
+			body: `{"login":"testuser","password":"wrongpass"}`,
+			mockSetup: func() {
+				mock.ExpectQuery("SELECT id, password FROM users").
+					WithArgs("testuser").
+					WillReturnRows(sqlmock.NewRows([]string{"id", "password"}).
+						AddRow(1, string(hashedPassword)))
+			},
+			expectedStatus: http.StatusUnauthorized,
+			expectedBody:   "Invalid login or password",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/login", strings.NewReader(tt.body))
+			w := httptest.NewRecorder()
+
+			orch.handleLogin(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if !strings.Contains(w.Body.String(), tt.expectedBody) {
+				t.Errorf("Expected body to contain %q, got %q", tt.expectedBody, w.Body.String())
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("Unfulfilled expectations: %v", err)
+			}
+		})
 	}
 }
 
-func TestExpressionByIDHandler_NotFound(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/expressions/999", nil)
-	w := httptest.NewRecorder()
+func TestAuthMiddleware(t *testing.T) {
+	orch, _, _ := setupTestOrchestrator(t)
 
-	expressionByIDHandler(w, req)
+	// Create a valid JWT token
+	expirationTime := time.Now().Add(24 * time.Hour)
+	claims := &struct {
+		UserID int `json:"user_id"`
+		jwt.StandardClaims
+	}{
+		UserID: 1,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, _ := token.SignedString(orch.jwtSecret)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("ожидался статус 404, получено: %d", w.Code)
+	tests := []struct {
+		name           string
+		token          string
+		expectedStatus int
+	}{
+		{
+			name:           "Valid token",
+			token:          tokenString,
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "No token",
+			token:          "",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:           "Invalid token",
+			token:          "invalid.token.string",
+			expectedStatus: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			if tt.token != "" {
+				req.Header.Set("Authorization", tt.token)
+			}
+			w := httptest.NewRecorder()
+
+			handler := orch.authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+		})
+	}
+}
+
+func TestGetTask(t *testing.T) {
+	orch, _, _ := setupTestOrchestrator(t)
+
+	task := &pb.Task{
+		Id:        "task1",
+		Arg1:      10,
+		Arg2:      5,
+		Operation: "+",
+	}
+	orch.addTask(task)
+
+	tests := []struct {
+		name        string
+		setup       func()
+		expectedErr error
+		expectedID  string
+	}{
+		{
+			name:       "Valid task",
+			setup:      func() {},
+			expectedID: "task1",
+		},
+		{
+			name: "No tasks",
+			setup: func() {
+				orch.mu.Lock()
+				orch.tasks = nil
+				orch.mu.Unlock()
+			},
+			expectedErr: status.Error(codes.NotFound, "no tasks available"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+
+			task, err := orch.GetTask(context.Background(), &pb.TaskRequest{})
+
+			if tt.expectedErr != nil {
+				if err == nil || err.Error() != tt.expectedErr.Error() {
+					t.Errorf("Expected error %v, got %v", tt.expectedErr, err)
+				}
+				return
+			}
+
+			if task.Id != tt.expectedID {
+				t.Errorf("Expected task ID %q, got %q", tt.expectedID, task.Id)
+			}
+		})
+	}
+}
+
+func TestSubmitResult(t *testing.T) {
+	orch, db, mock := setupTestOrchestrator(t)
+	defer db.Close()
+
+	orch.processing["task1"] = true
+
+	tests := []struct {
+		name            string
+		result          *pb.Result
+		mockSetup       func()
+		expectedErr     error
+		expectedSuccess bool
+	}{
+		{
+			name: "Valid result",
+			result: &pb.Result{
+				Id:     "task1",
+				Result: 15.0,
+			},
+			mockSetup: func() {
+				mock.ExpectExec("UPDATE expressions").
+					WithArgs(15.0, "task1").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+			},
+			expectedSuccess: true,
+		},
+		{
+			name: "Task not found",
+			result: &pb.Result{
+				Id:     "task2",
+				Result: 15.0,
+			},
+			mockSetup:       func() {},
+			expectedErr:     status.Error(codes.NotFound, "task not found"),
+			expectedSuccess: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
+
+			resp, err := orch.SubmitResult(context.Background(), tt.result)
+
+			if tt.expectedErr != nil {
+				if err == nil || err.Error() != tt.expectedErr.Error() {
+					t.Errorf("Expected error %v, got %v", tt.expectedErr, err)
+				}
+				return
+			}
+
+			if resp.Success != tt.expectedSuccess {
+				t.Errorf("Expected success %v, got %v", tt.expectedSuccess, resp.Success)
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("Unfulfilled expectations: %v", err)
+			}
+		})
+	}
+}
+
+func TestHandleCalculate(t *testing.T) {
+	orch, db, mock := setupTestOrchestrator(t)
+	defer db.Close()
+
+	tests := []struct {
+		name           string
+		body           string
+		userID         int
+		mockSetup      func()
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:   "Valid expression",
+			body:   `{"expression":"2+2"}`,
+			userID: 1,
+			mockSetup: func() {
+				mock.ExpectExec("INSERT INTO expressions").
+					WithArgs(sqlmock.AnyArg(), 1, "2+2", "processing").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   `"id":`,
+		},
+		{
+			name:           "Invalid JSON",
+			body:           `{"expression":}`,
+			userID:         1,
+			mockSetup:      func() {},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid request body",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/calculate", strings.NewReader(tt.body))
+			ctx := context.WithValue(req.Context(), "user_id", tt.userID)
+			req = req.WithContext(ctx)
+			w := httptest.NewRecorder()
+
+			orch.handleCalculate(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
+			}
+
+			if !strings.Contains(w.Body.String(), tt.expectedBody) {
+				t.Errorf("Expected body to contain %q, got %q", tt.expectedBody, w.Body.String())
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("Unfulfilled expectations: %v", err)
+			}
+		})
 	}
 }

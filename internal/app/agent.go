@@ -117,7 +117,7 @@ func getEnvDuration(envVar string, defaultValue time.Duration) time.Duration {
 
 func clientWorkerGRPC(wg *sync.WaitGroup, ac *agentClient) {
 	defer wg.Done()
-	timeout := getEnvDuration("TIME_TIMEOUT_MS", 1000*time.Millisecond)
+	timeout := getEnvDuration("TIME_TIMEOUT_MS", 100*time.Millisecond)
 
 	logWithContext("Starting worker...")
 	for {

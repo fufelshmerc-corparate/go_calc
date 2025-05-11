@@ -544,20 +544,17 @@ func InitDB(dsn string) (*sql.DB, error) {
 }
 
 func RunOrchestrator() error {
-	// Initialize DB
 	db, err := InitDB("./expressions.db")
 	if err != nil {
 		return fmt.Errorf("failed to init DB: %v", err)
 	}
 
-	// Create orchestrator
 	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
 	if len(jwtSecret) == 0 {
 		jwtSecret = []byte("default-secret-key")
 	}
 	orch := NewOrchestrator(db, jwtSecret)
 
-	// Configure operation times from env
 	if t, err := strconv.Atoi(os.Getenv("TIME_ADDITION_MS")); err == nil {
 		orch.SetOperationTime("+", t)
 	}

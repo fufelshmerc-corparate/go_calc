@@ -1,4 +1,4 @@
-# Распределённый вычислитель арифметических выражений
+# Распределённый вычислитель арифметических выражений(Финал)
 
 Система для параллельного вычисления сложных арифметических выражений с использованием оркестратора и агентов-вычислителей.
 
@@ -16,6 +16,10 @@
 
 3. **Перейдите в коренвую папку проекта**:
 
+4. **Установка зависимостей**:
+    ```
+    go mod tidy
+    ```
 
 
 ---
@@ -44,7 +48,7 @@ graph TD
 
 **Агенты**:
 
-- Получают задачи от оркестратора
+- Получают задачи от оркестратора(связь ут)
 - Выполняют арифметические операции с задержкой(задается пользователем через переменные среды)
 - Возвращают результаты оркестратору
 
@@ -58,25 +62,18 @@ graph TD
 
 go run cmd/main.go
 
-# Запуск web
-
-скопируйте путь до файла site.html 
-- например file:///C:/YandexGO/2_Final/cmd/site.html
-
- вставте это в браузер
-
-
 ## Windows (cmd.exe)
 
 
 ### Установка переменных среды
-
-- set PORT= 8082 //порт
+- set HTTP_PORT=8080 //порт HTTP
+- set GRPC_PORT=50051 //порт GRPC
 - set COMPUTING_POWER=1 //количество агентов
 - set TIME_ADDITION_MS=100 //время сложения
 - set TIME_SUBTRACTION_MS=100 //время вычитания
 - set TIME_MULTIPLICATIONS_MS=100 //время умножения
 - set TIME_DIVISIONS_MS=100 //время деления
+- set TIME_TIMEOUT_MS=100//частота опроса агентами
 - здесь пример значений которые установлены по умолчанию
 
 
@@ -87,52 +84,23 @@ go run cmd/main.go
 Пример запроса:
 
 ```bash
-curl --location 'http://localhost:8082/api/v1/calculate' \
---header 'Content-Type: application/json' \
---data '{
-  "expression": "(2+3)*4-10/2"
-}'
-```
-WINDOWS(cmd)
-```
-curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2\"}"
+curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: application/json"   -H "Authorization: YOUR_TOKEN"   -d '{"expression":"2+2*2"}'
 ```
 Успешный ответ (201):
-
 ```json
-{
-    "id": "1"
-}
+{"id":"expr_2_1"}
 ```
 
 ### 2. Получение списка выражений
 ```bash
-curl http://localhost:8082/api/v1/expressions
+ curl -X GET http://localhost:8080/api/v1/expressions   -H "Authorization: YOUR_TOKEN"  
 ```
 
 Пример ответа (200):
 
 ```json
-{
-    "expressions": [
-        {
-            "id": "1",
-            "expression": "2+2",
-            "status": "completed",
-            "result": 4
-        },
-        {
-            "id": "1",
-            "expression": "2+2+2+2+2+2++2+2++2+2++2+2++2+2",
-            "status": "processing",
-        },
-        {
-            "id": "2",
-            "expression": "8/0",
-            "status": "error",
-        }
-    ]
-}
+[{"id":"expr_2_1","expression":"2+2*2","status":"completed","result":6,"created_at":"2025-05-11T13:05:01Z"}]
+
 ```
 
 ### 3. Получение выражения по ID
@@ -140,103 +108,57 @@ curl http://localhost:8082/api/v1/expressions
 Пример запроса:
 
 ```bash
-curl http://localhost:8082/api/v1/expressions/1
+ curl -X GET http://localhost:8080/api/v1/expressions/expr_2_2   -H "Authorization: YOUR_TOKEN"
 ```
 
 Ответ (200):
 
-```json
-{
-    "id": "1",
-    "expression": "2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2",
-    "status": "completed",
-    "result": 92
-}
-"или"
-{
-    "id": "1",
-    "expression": "2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2+2*2",
-    "status": "processing"
-}
 ```
-
-## Внутреннее API (для агентов, не для пользователя)
-
-### 1. Получение задачи
-
-```curl
-curl http://localhost:8082/internal/task
+{"id":"expr_2_2","expression":"2/0","status":"error","created_at":"2025-05-11T13:19:16Z"}
 ```
-
-Пример ответа (200):
-
-```json
-{
-    "id":"1",
-    "arg1":2,
-    "arg2":2,
-    "operation":"*",
-    "operationtime":100
-}
-```
-
-### 2. Отправка результата
-WINDOWS(cmd)
-```bash
-curl -X POST "http://localhost:8082/internal/task" ^ -H "Content-Type: application/json" ^ -d "{\"id\": \"51\", \"result\": 4}"
-```
-
-Пример запроса:
-
-```
-    200 - успешно записан результат
-```
-
 
 ## Примеры сценариев
 
 ### Сценарий 1: Успешное вычисление
-WINDOWS(cmd)
+bash
 
 ```bash
-curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"1/1\"}"
+curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: application/json"   -H "Authorization: YOUR_TOKEN"   -d '{"expression":"2+2*2"}'
 ```
 # Проверка статуса
-curl http://localhost:8080/api/v1/expressions
+```bash
+ curl -X GET http://localhost:8080/api/v1/expressions   -H "Authorization: YOUR_TOKEN"  
+```
 
 # Ответ 
-```
- "expressions": {
-        "1": {
-            "id": "1",
-            "expression": "1\1",
-            "status": "completed",
-            "result": 1
-        }
- }
+```json
+[{"id":"expr_2_1","expression":"2+2*2","status":"completed","result":6,"created_at":"2025-05-11T13:05:01Z"}]
+
 ```
 
 ### Сценарий 2: Ошибка деления на ноль
 WINDOWS(cmd)
 
-```curl
-curl -X POST "http://localhost:8082/api/v1/calculate" ^ -H "Content-Type: application/json" ^ -d "{\"expression\": \"1/0\"}"
+```bash
+curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: application/json"   -H "Authorization: YOUR_TOKEN"   -d '{"expression":"2/0"}'
 ```
 
 # Ответ:
-```
- "expressions": {
-        "1": {
-            "id": "1",
-            "expression": "1\0",
-            "status": "completed",
-        }
- }
+```json
+[{"id":"expr_2_1","expression":"2/0","status":"error","created_at":"2025-05-11T13:05:01Z"}]
+
 ```
 
 ## Тестирование
-Перед тестированием надо убрать переменные среды, так как тест рассчитан(по времени) на работу с стандартными значениями
+
 
 ```cmd
-go test .\internal\app\ -v
+go test -v ./internal/app
+
 ```
+
+
+
+
+
+
