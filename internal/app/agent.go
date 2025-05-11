@@ -16,16 +16,16 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// getCallerInfo возвращает информацию о вызывающем коде (файл:строка)
+
 func getCallerInfo() string {
-	_, file, line, ok := runtime.Caller(2) // 2 - глубина стека вызовов
+	_, file, line, ok := runtime.Caller(2)
 	if !ok {
 		return "unknown:0"
 	}
 	return fmt.Sprintf("%s:%d", filepath.Base(file), line)
 }
 
-// logWithContext добавляет к логам информацию о месте вызова
+
 func logWithContext(format string, v ...interface{}) {
 	caller := getCallerInfo()
 	msg := fmt.Sprintf(format, v...)

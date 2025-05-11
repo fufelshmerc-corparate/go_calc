@@ -55,7 +55,7 @@ func NewOrchestrator(db *sql.DB, jwtSecret []byte) *Orchestrator {
 	}
 }
 
-// Регистрация нового пользователя
+
 func (o *Orchestrator) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -92,7 +92,7 @@ func (o *Orchestrator) handleRegister(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-// Аутентификация пользователя
+
 func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -145,7 +145,7 @@ func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
 }
 
-// Middleware аутентификации
+
 func (o *Orchestrator) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tokenString := r.Header.Get("Authorization")
@@ -173,7 +173,7 @@ func (o *Orchestrator) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// Получение выражения по ID
+
 func (o *Orchestrator) expressionByIDHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"Wrong Method"}`, http.StatusMethodNotAllowed)
@@ -225,7 +225,7 @@ func (o *Orchestrator) expressionByIDHandler(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(response)
 }
 
-// Middleware для CORS
+
 func (o *Orchestrator) enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -240,7 +240,7 @@ func (o *Orchestrator) enableCORS(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-// Получение списка всех выражений пользователя
+
 func (o *Orchestrator) handleExpressions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -327,7 +327,7 @@ func (o *Orchestrator) Start(grpcPort, httpPort string) error {
 		}
 	}()
 
-	// Start HTTP server
+	
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/register", o.handleRegister)
 	mux.HandleFunc("/api/v1/login", o.handleLogin)
@@ -356,7 +356,7 @@ func (o *Orchestrator) SetOperationTime(op string, timeMs int) {
 	o.opTimes[op] = timeMs
 }
 
-// gRPC methods
+
 func (o *Orchestrator) GetTask(ctx context.Context, req *pb.TaskRequest) (*pb.Task, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -393,7 +393,7 @@ func (o *Orchestrator) SubmitResult(ctx context.Context, res *pb.Result) (*pb.Re
 	return &pb.ResultResponse{Success: true}, nil
 }
 
-// HTTP handlers
+
 func (o *Orchestrator) handleCalculate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -510,9 +510,7 @@ func (o *Orchestrator) waitForResult(taskID string) (float64, error) {
 	}
 }
 
-// Other HTTP handlers and helper methods...
-// (handleRegister, handleLogin, handleExpressions, expressionByIDHandler, 
-// authMiddleware, enableCORS etc. remain the same as in previous examples)
+
 
 func InitDB(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dsn)
@@ -568,7 +566,7 @@ func RunOrchestrator() error {
 		orch.SetOperationTime("/", t)
 	}
 
-	// Start servers
+	
 	grpcPort := os.Getenv("GRPC_PORT")
 	if grpcPort == "" {
 		grpcPort = "50051"
