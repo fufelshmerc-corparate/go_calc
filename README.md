@@ -78,6 +78,20 @@ go run cmd/main.go
 
 
 ## API Endpoints
+###  Авторизация
+
+```bash
+регистрация
+curl -X POST http://localhost:8080/api/v1/register   -H "Content-Type: application/json"   -d '{"login":"user2", "password":"password1234"}'  
+```
+Успешный ответ (201):
+
+```bash
+вход
+curl -X POST http://localhost:8080/api/v1/login   -H "Content-Type: application/json"   -d '{"login":"user2", "password":"password1234"}' 
+```
+Успешный ответ:
+{"token":"YOUR_TOKEN"}
 
 ### 1. Добавление выражения
 
@@ -88,7 +102,7 @@ curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: applicat
 ```
 Успешный ответ (201):
 ```json
-{"id":"expr_2_1"}
+{"id":"expr_1_1"}
 ```
 
 ### 2. Получение списка выражений
