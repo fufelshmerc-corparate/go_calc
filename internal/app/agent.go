@@ -162,7 +162,7 @@ func RunAgentGRPC() {
 		computingPower = 1
 	}
 
-	serverAddr := os.Getenv("ORCHESTRATOR_GRPC_ADDR")
+	serverAddr := "localhost:" + os.Getenv("GRPC_PORT")
 	if serverAddr == "" {
 		serverAddr = "localhost:50051"
 	}
