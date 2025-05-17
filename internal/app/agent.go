@@ -64,23 +64,23 @@ func (ac *agentClient) close() {
 }
 
 func (ac *agentClient) getTask() (*pb.Task, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    task, err := ac.client.GetTask(ctx, &pb.TaskRequest{AgentId: "agent"})
+    if err != nil {
+        if err.Error() == "rpc error: code = NotFound desc = no tasks available" {
+            return nil, nil
+        }
+        
+        logWithContext("Error getting task: %v", err)
+        return nil, fmt.Errorf("could not get task: %v", err)
+    }
 
-	logWithContext("Requesting new task from orchestrator...")
-	task, err := ac.client.GetTask(ctx, &pb.TaskRequest{AgentId: "agent"})
-	if err != nil {
-		logWithContext("Error getting task: %v", err)
-		return nil, fmt.Errorf("could not get task: %v", err)
-	}
+    if task != nil {
+        logWithContext("Received task ID %s: %f %s %f", task.Id, task.Arg1, task.Operation, task.Arg2)
+    }
 
-	if task != nil {
-		logWithContext("Received task ID %s: %f %s %f", task.Id, task.Arg1, task.Operation, task.Arg2)
-	} else {
-		logWithContext("Received empty task")
-	}
-
-	return task, nil
+    return task, nil
 }
 
 func (ac *agentClient) submitResult(result *pb.Result) error {
@@ -129,7 +129,6 @@ func clientWorkerGRPC(wg *sync.WaitGroup, ac *agentClient) {
 		}
 
 		if task == nil {
-			logWithContext("No tasks available, waiting %v...", timeout)
 			time.Sleep(timeout)
 			continue
 		}

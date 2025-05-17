@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,7 +56,6 @@ func NewOrchestrator(db *sql.DB, jwtSecret []byte) *Orchestrator {
 	}
 }
 
-
 func (o *Orchestrator) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -91,7 +91,6 @@ func (o *Orchestrator) handleRegister(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
-
 
 func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -142,17 +141,26 @@ func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
+	json.NewEncoder(w).Encode(map[string]string{
+		"token": "Bearer " + tokenString,
+	})
 }
-
 
 func (o *Orchestrator) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.Header.Get("Authorization")
-		if tokenString == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
 			http.Error(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
+
+		const prefix = "Bearer "
+		if !strings.HasPrefix(authHeader, prefix) {
+			http.Error(w, "Authorization header format must be 'Bearer <token>'", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := authHeader[len(prefix):]
 
 		claims := &struct {
 			UserID int `json:"user_id"`
@@ -172,7 +180,6 @@ func (o *Orchestrator) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
-
 
 func (o *Orchestrator) expressionByIDHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -224,7 +231,6 @@ func (o *Orchestrator) expressionByIDHandler(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
-
 
 func (o *Orchestrator) enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -327,7 +333,6 @@ func (o *Orchestrator) Start(grpcPort, httpPort string) error {
 		}
 	}()
 
-	
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/register", o.handleRegister)
 	mux.HandleFunc("/api/v1/login", o.handleLogin)
@@ -355,7 +360,6 @@ func (o *Orchestrator) SetOperationTime(op string, timeMs int) {
 	defer o.mu.Unlock()
 	o.opTimes[op] = timeMs
 }
-
 
 func (o *Orchestrator) GetTask(ctx context.Context, req *pb.TaskRequest) (*pb.Task, error) {
 	o.mu.Lock()
@@ -393,7 +397,6 @@ func (o *Orchestrator) SubmitResult(ctx context.Context, res *pb.Result) (*pb.Re
 	return &pb.ResultResponse{Success: true}, nil
 }
 
-
 func (o *Orchestrator) handleCalculate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -410,8 +413,8 @@ func (o *Orchestrator) handleCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	taskID := fmt.Sprintf("expr_%d_%d", userID, atomic.AddUint64(&o.taskCounter, 1))
-	
+	taskID := fmt.Sprintf("%d%d", userID, atomic.AddUint64(&o.taskCounter, 1))
+
 	_, err := o.db.Exec(
 		"INSERT INTO expressions (id, user_id, expression, status) VALUES (?, ?, ?, ?)",
 		taskID, userID, input.Expression, "processing",
@@ -440,7 +443,7 @@ func (o *Orchestrator) processExpression(exprStr string, userID int, taskID stri
 		return
 	}
 
-	_, err = o.db.Exec("UPDATE expressions SET status = ?, result = ? WHERE id = ?", 
+	_, err = o.db.Exec("UPDATE expressions SET status = ?, result = ? WHERE id = ?",
 		"completed", result, taskID)
 	if err != nil {
 		log.Printf("Failed to update expression status: %v", err)
@@ -474,10 +477,10 @@ func (o *Orchestrator) eval(expr ast.Expr) (float64, error) {
 		opTime := o.opTimes[e.Op.String()]
 
 		task := &pb.Task{
-			Id:           taskID,
-			Arg1:         left,
-			Arg2:         right,
-			Operation:    e.Op.String(),
+			Id:            taskID,
+			Arg1:          left,
+			Arg2:          right,
+			Operation:     e.Op.String(),
 			OperationTime: int32(opTime),
 		}
 
@@ -499,7 +502,7 @@ func (o *Orchestrator) addTask(task *pb.Task) {
 func (o *Orchestrator) waitForResult(taskID string) (float64, error) {
 	for {
 		time.Sleep(100 * time.Millisecond)
-		
+
 		o.mu.Lock()
 		if result, exists := o.results[taskID]; exists {
 			delete(o.results, taskID)
@@ -509,8 +512,6 @@ func (o *Orchestrator) waitForResult(taskID string) (float64, error) {
 		o.mu.Unlock()
 	}
 }
-
-
 
 func InitDB(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dsn)
@@ -542,7 +543,8 @@ func InitDB(dsn string) (*sql.DB, error) {
 }
 
 func RunOrchestrator() error {
-	db, err := InitDB("./expressions.db")
+	db, err := InitDB("./data.db")
+
 	if err != nil {
 		return fmt.Errorf("failed to init DB: %v", err)
 	}
@@ -566,7 +568,6 @@ func RunOrchestrator() error {
 		orch.SetOperationTime("/", t)
 	}
 
-	
 	grpcPort := os.Getenv("GRPC_PORT")
 	if grpcPort == "" {
 		grpcPort = "50051"

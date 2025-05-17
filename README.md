@@ -21,6 +21,11 @@
     go mod tidy
     ```
 
+5. **Запуск**
+    ```
+    go run ./cmd/main.go
+    ```
+
 
 ---
 
