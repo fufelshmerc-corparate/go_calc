@@ -82,11 +82,15 @@ go run ./cmd/main.go
 
 ### Пример conf.env файла(он уже есть, можете его просто редактировать)
 TIME_ADDITION_MS=100
+
 TIME_SUBTRACTION_MS=150
+
 TIME_MULTIPLICATION_MS=200
+
 TIME_DIVISION_MS=250
 
 GRPC_PORT=50051
+
 HTTP_PORT=8080
 
 COMPUTING_POWER=1
