@@ -2,7 +2,7 @@
 
 Система для параллельного вычисления сложных арифметических выражений с использованием оркестратора и агентов-вычислителей.
 
-## Установка и настройка
+## Установка
 
 1. **Клонируйте репозиторий**:
     ```
@@ -21,10 +21,6 @@
     go mod tidy
     ```
 
-5. **Запуск**
-    ```
-    go run ./cmd/main.go
-    ```
 
 
 ---
@@ -82,6 +78,21 @@ go run cmd/main.go
 - здесь пример значений которые установлены по умолчанию
 
 
+
+
+### Пример conf.env файла(он уже есть, можете его просто редактировать)
+TIME_ADDITION_MS=100
+TIME_SUBTRACTION_MS=150
+TIME_MULTIPLICATION_MS=200
+TIME_DIVISION_MS=250
+
+GRPC_PORT=50051
+HTTP_PORT=8080
+
+COMPUTING_POWER=1
+
+TIME_TIMEOUT_MS=200
+
 ## API Endpoints
 ###  Авторизация
 
@@ -107,7 +118,7 @@ curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: applicat
 ```
 Успешный ответ (201):
 ```json
-{"id":"expr_1_1"}
+{"id":"id"}
 ```
 
 ### 2. Получение списка выражений
@@ -118,7 +129,7 @@ curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: applicat
 Пример ответа (200):
 
 ```json
-[{"id":"expr_2_1","expression":"2+2*2","status":"completed","result":6,"created_at":"2025-05-11T13:05:01Z"}]
+[{"id":"id","expression":"2+2*2","status":"completed","result":6,"created_at":"2025-05-11T13:05:01Z"}]
 
 ```
 
@@ -133,7 +144,7 @@ curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: applicat
 Ответ (200):
 
 ```
-{"id":"expr_2_2","expression":"2/0","status":"error","created_at":"2025-05-11T13:19:16Z"}
+{"id":"id","expression":"2/0","status":"error","created_at":"2025-05-11T13:19:16Z"}
 ```
 
 ## Примеры сценариев
@@ -151,7 +162,7 @@ curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: applicat
 
 # Ответ 
 ```json
-[{"id":"expr_2_1","expression":"2+2*2","status":"completed","result":6,"created_at":"2025-05-11T13:05:01Z"}]
+[{"id":"id","expression":"2+2*2","status":"completed","result":6,"created_at":"2025-05-11T13:05:01Z"}]
 
 ```
 
@@ -164,7 +175,7 @@ curl -X POST http://localhost:8080/api/v1/calculate   -H "Content-Type: applicat
 
 # Ответ:
 ```json
-[{"id":"expr_2_1","expression":"2/0","status":"error","created_at":"2025-05-11T13:05:01Z"}]
+[{"id":"id","expression":"2/0","status":"error","created_at":"2025-05-11T13:05:01Z"}]
 
 ```
 

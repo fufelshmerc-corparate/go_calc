@@ -6,9 +6,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	err := godotenv.Load("./conf.env")
+	if err != nil {
+		log.Printf("failed to load env: %v", err)
+	}
 	go func() {
 		app.RunAgentGRPC()
 	}()

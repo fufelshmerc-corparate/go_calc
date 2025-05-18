@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc"
@@ -543,11 +544,14 @@ func InitDB(dsn string) (*sql.DB, error) {
 }
 
 func RunOrchestrator() error {
+
 	db, err := InitDB("./data.db")
 
 	if err != nil {
 		return fmt.Errorf("failed to init DB: %v", err)
 	}
+
+	
 
 	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
 	if len(jwtSecret) == 0 {
