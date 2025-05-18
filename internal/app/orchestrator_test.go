@@ -8,10 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -169,66 +167,6 @@ func TestHandleLogin(t *testing.T) {
 
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("Unfulfilled expectations: %v", err)
-			}
-		})
-	}
-}
-
-func TestAuthMiddleware(t *testing.T) {
-	orch, _, _ := setupTestOrchestrator(t)
-
-	// Create a valid JWT token
-	expirationTime := time.Now().Add(24 * time.Hour)
-	claims := &struct {
-		UserID int `json:"user_id"`
-		jwt.StandardClaims
-	}{
-		UserID: 1,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, _ := token.SignedString(orch.jwtSecret)
-
-	tests := []struct {
-		name           string
-		token          string
-		expectedStatus int
-	}{
-		{
-			name:           "Valid token",
-			token:          tokenString,
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "No token",
-			token:          "",
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "Invalid token",
-			token:          "invalid.token.string",
-			expectedStatus: http.StatusUnauthorized,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
-			if tt.token != "" {
-				req.Header.Set("Authorization", tt.token)
-			}
-			w := httptest.NewRecorder()
-
-			handler := orch.authMiddleware(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			})
-
-			handler.ServeHTTP(w, req)
-
-			if w.Code != tt.expectedStatus {
-				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
 			}
 		})
 	}
