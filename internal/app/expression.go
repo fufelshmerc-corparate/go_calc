@@ -16,8 +16,6 @@ import (
 	"time"
 )
 
-// normalizeNumbers accepts decimal syntax independently of Go literal conventions.
-// In particular, 010 means ten, not octal eight, and comments are not expressions.
 func normalizeNumbers(input string) (string, error) {
 	var out strings.Builder
 	for i := 0; i < len(input); {
@@ -58,7 +56,6 @@ func normalizeNumbers(input string) (string, error) {
 	return out.String(), nil
 }
 
-// parseExpression validates the entire syntax tree before any tasks are queued.
 func parseExpression(input string) (ast.Expr, error) {
 	if len(input) == 0 || len(input) > 4096 {
 		return nil, errors.New("expression must contain 1..4096 bytes")
@@ -160,7 +157,7 @@ func (o *Orchestrator) eval(ctx context.Context, expr ast.Expr) (float64, error)
 		if err != nil {
 			return 0, err
 		}
-		// Check arithmetic errors before dispatch so a worker cannot abandon an invalid task.
+
 		task := &pb.Task{Id: fmt.Sprintf("task_%d", atomic.AddUint64(&o.taskCounter, 1)), Arg1: left, Arg2: right, Operation: e.Op.String()}
 		if _, err := performOperation(task); err != nil {
 			return 0, err
