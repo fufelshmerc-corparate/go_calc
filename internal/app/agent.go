@@ -16,8 +16,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// RunAgentGRPC runs a bounded worker pool until the application is stopped.
-// The connection is shared safely by all workers; unavailable servers are retried.
 func RunAgentGRPC(ctx context.Context, addr string, workers int, poll time.Duration) error {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -45,7 +43,6 @@ func RunAgentGRPC(ctx context.Context, addr string, workers int, poll time.Durat
 					task.OperationTime = 0
 					result, calcErr := performOperation(task)
 					if calcErr == nil {
-						// Keep the result until acknowledged or the bounded expression deadline expires.
 						deadline := time.Now().Add(30 * time.Second)
 						for ctx.Err() == nil && time.Now().Before(deadline) {
 							rpcCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
