@@ -25,12 +25,17 @@ import (
 	pb "github.com/fufelshmerc-corparate/go_calc/api/calc"
 )
 
+type taskResult struct {
+	value float64
+	err   error
+}
+
 type Orchestrator struct {
 	pb.UnimplementedOrchestratorServer
 	mu          sync.Mutex
 	tasks       []*pb.Task
 	processing  map[string]bool
-	results     map[string]float64
+	results     map[string]taskResult
 	taskCounter uint64
 	db          *sql.DB
 	jwtSecret   []byte
@@ -46,7 +51,7 @@ func NewOrchestrator(db *sql.DB, jwtSecret []byte) *Orchestrator {
 		slots:      make(chan struct{}, 128),
 		tasks:      make([]*pb.Task, 0),
 		processing: make(map[string]bool),
-		results:    make(map[string]float64),
+		results:    make(map[string]taskResult),
 		db:         db,
 		jwtSecret:  jwtSecret,
 		opTimes: map[string]int{
@@ -363,7 +368,12 @@ func (o *Orchestrator) SubmitResult(ctx context.Context, res *pb.Result) (*pb.Re
 	if math.IsNaN(res.Result) || math.IsInf(res.Result, 0) {
 		return nil, status.Error(codes.InvalidArgument, "non-finite result")
 	}
-	o.results[res.Id] = res.Result
+	result := taskResult{value: res.Result}
+	if res.Error != "" {
+		result.value = 0
+		result.err = errors.New(res.Error)
+	}
+	o.results[res.Id] = result
 	delete(o.processing, res.Id)
 
 	log.Printf("Result received for task %s: %f", res.Id, res.Result)
@@ -464,7 +474,7 @@ func (o *Orchestrator) waitForResult(ctx context.Context, taskID string) (float6
 		result, exists := o.results[taskID]
 		o.mu.Unlock()
 		if exists {
-			return result, nil
+			return result.value, result.err
 		}
 	}
 }

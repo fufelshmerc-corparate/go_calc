@@ -398,3 +398,60 @@ func TestRestartMarksInterruptedExpressions(t *testing.T) {
 		t.Fatalf("interrupted expression is %s", state)
 	}
 }
+
+func TestEvalPropagatesAgentError(t *testing.T) {
+	for _, tt := range []struct{ input, operation, message string }{
+		{"1/0", "/", "division by zero"},
+		{"1e308*1e308", "*", "non-finite result"},
+		{"(1/0)+(2*3)", "/", "division by zero"},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			o := NewOrchestrator(nil, nil)
+			expr, err := parseExpression(tt.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { _, err := o.eval(ctx, expr); done <- err }()
+			var task *pb.Task
+			for task == nil {
+				select {
+				case err := <-done:
+					t.Fatalf("evaluation finished before agent received a task: %v", err)
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				default:
+				}
+				task, err = o.GetTask(ctx, &pb.TaskRequest{})
+				if err != nil && status.Code(err) != codes.NotFound {
+					t.Fatal(err)
+				}
+				if task == nil {
+					time.Sleep(time.Millisecond)
+				}
+			}
+			if task.Operation != tt.operation {
+				t.Fatalf("operation=%s", task.Operation)
+			}
+			response, err := o.SubmitResult(ctx, &pb.Result{Id: task.Id, Error: tt.message})
+			if err != nil || !response.Success {
+				t.Fatalf("submit: %v, %v", response, err)
+			}
+			select {
+			case err := <-done:
+				if err == nil || err.Error() != tt.message {
+					t.Fatalf("error=%v", err)
+				}
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			o.mu.Lock()
+			defer o.mu.Unlock()
+			if len(o.tasks)+len(o.processing)+len(o.results) != 0 {
+				t.Fatal("failed expression left tasks behind")
+			}
+		})
+	}
+}

@@ -28,6 +28,7 @@ message Task {
 message Result {
   string id = 1;
   double result = 2;
+  string error = 3;
 }
 
 message ResultResponse {

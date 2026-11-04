@@ -159,9 +159,6 @@ func (o *Orchestrator) eval(ctx context.Context, expr ast.Expr) (float64, error)
 		}
 
 		task := &pb.Task{Id: fmt.Sprintf("task_%d", atomic.AddUint64(&o.taskCounter, 1)), Arg1: left, Arg2: right, Operation: e.Op.String()}
-		if _, err := performOperation(task); err != nil {
-			return 0, err
-		}
 		o.mu.Lock()
 		task.OperationTime = int32(o.opTimes[task.Operation])
 		o.mu.Unlock()

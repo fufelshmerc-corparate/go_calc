@@ -42,18 +42,20 @@ func RunAgentGRPC(ctx context.Context, addr string, workers int, poll time.Durat
 					}
 					task.OperationTime = 0
 					result, calcErr := performOperation(task)
-					if calcErr == nil {
-						deadline := time.Now().Add(30 * time.Second)
-						for ctx.Err() == nil && time.Now().Before(deadline) {
-							rpcCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
-							_, err = client.SubmitResult(rpcCtx, &pb.Result{Id: task.Id, Result: result})
-							cancel()
-							if err == nil || status.Code(err) == codes.NotFound || status.Code(err) == codes.InvalidArgument {
-								break
-							}
-							if !wait(ctx, poll) {
-								return
-							}
+					response := &pb.Result{Id: task.Id, Result: result}
+					if calcErr != nil {
+						response.Error = calcErr.Error()
+					}
+					deadline := time.Now().Add(30 * time.Second)
+					for ctx.Err() == nil && time.Now().Before(deadline) {
+						rpcCtx, cancel = context.WithTimeout(ctx, 5*time.Second)
+						_, err = client.SubmitResult(rpcCtx, response)
+						cancel()
+						if err == nil || status.Code(err) == codes.NotFound || status.Code(err) == codes.InvalidArgument {
+							break
+						}
+						if !wait(ctx, poll) {
+							return
 						}
 					}
 				}
