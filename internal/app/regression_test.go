@@ -138,7 +138,6 @@ func TestJSONRequestValidation(t *testing.T) {
 	}
 }
 
-// Exercise HTTP auth, a real SQLite DB and the real gRPC worker pool together.
 func TestAPIIntegration(t *testing.T) {
 	db, err := InitDB(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -202,7 +201,6 @@ func TestAPIIntegration(t *testing.T) {
 	if w := request("GET", "/api/v1/expressions", "", tokens[0]); w.Body.String() != "[]\n" {
 		t.Fatalf("empty list: %s", w.Body)
 	}
-	// Updating operation times concurrently with evaluation must be race free.
 	var configWG sync.WaitGroup
 	configWG.Add(1)
 	go func() {
