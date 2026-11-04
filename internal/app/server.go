@@ -66,7 +66,6 @@ func ConfigFromEnv() (Config, error) {
 	return c, nil
 }
 
-// Run starts both listeners before launching agents and owns their complete lifecycle.
 func Run(ctx context.Context, c Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -75,7 +74,6 @@ func Run(ctx context.Context, c Config) error {
 		return fmt.Errorf("initialize database: %w", err)
 	}
 	defer db.Close()
-	// The task queue is in memory: interrupted expressions cannot be resumed after restart.
 	if _, err := db.Exec("UPDATE expressions SET status = 'error' WHERE status = 'processing'"); err != nil {
 		return err
 	}
@@ -89,7 +87,6 @@ func Run(ctx context.Context, c Config) error {
 		return err
 	}
 	defer httpListener.Close()
-	// gRPC is an internal trusted interface, available only on loopback.
 	grpcListener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", c.GRPCPort))
 	if err != nil {
 		return err
