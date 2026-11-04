@@ -145,6 +145,7 @@ type Result struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Result        float64                `protobuf:"fixed64,2,opt,name=result,proto3" json:"result,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -191,6 +192,13 @@ func (x *Result) GetResult() float64 {
 		return x.Result
 	}
 	return 0
+}
+
+func (x *Result) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
 }
 
 type ResultResponse struct {
@@ -377,10 +385,11 @@ const file_api_calc_proto_rawDesc = "" +
 	"\x04arg1\x18\x02 \x01(\x01R\x04arg1\x12\x12\n" +
 	"\x04arg2\x18\x03 \x01(\x01R\x04arg2\x12\x1c\n" +
 	"\toperation\x18\x04 \x01(\tR\toperation\x12%\n" +
-	"\x0eoperation_time\x18\x05 \x01(\x05R\roperationTime\"0\n" +
+	"\x0eoperation_time\x18\x05 \x01(\x05R\roperationTime\"F\n" +
 	"\x06Result\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
-	"\x06result\x18\x02 \x01(\x01R\x06result\"D\n" +
+	"\x06result\x18\x02 \x01(\x01R\x06result\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"D\n" +
 	"\x0eResultResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"L\n" +
