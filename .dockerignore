@@ -1,0 +1,10 @@
+.git
+.github
+.env
+.env.*
+*.db
+*.db-*
+*.sqlite*
+bin
+coverage.out
+CHANGES_REPORT.md

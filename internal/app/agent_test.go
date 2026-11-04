@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/IvanSolomatin/calc_v2/api/calc"
+	pb "github.com/fufelshmerc-corparate/go_calc/api/calc"
 	"github.com/stretchr/testify/assert"
 )
 

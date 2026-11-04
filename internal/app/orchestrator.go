@@ -2,31 +2,27 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"go/ast"
-	"go/parser"
+	"io"
 	"log"
-	"net"
+	"math"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
-	
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/IvanSolomatin/calc_v2/api/calc"
+	pb "github.com/fufelshmerc-corparate/go_calc/api/calc"
 )
 
 type Orchestrator struct {
@@ -39,10 +35,15 @@ type Orchestrator struct {
 	db          *sql.DB
 	jwtSecret   []byte
 	opTimes     map[string]int
+	ctx         context.Context
+	jobs        sync.WaitGroup
+	slots       chan struct{}
 }
 
 func NewOrchestrator(db *sql.DB, jwtSecret []byte) *Orchestrator {
 	return &Orchestrator{
+		ctx:        context.Background(),
+		slots:      make(chan struct{}, 128),
 		tasks:      make([]*pb.Task, 0),
 		processing: make(map[string]bool),
 		results:    make(map[string]float64),
@@ -67,7 +68,7 @@ func (o *Orchestrator) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Login    string `json:"login"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeRequest(w, r, &req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -79,13 +80,18 @@ func (o *Orchestrator) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		http.Error(w, "Password must be at most 72 bytes", http.StatusBadRequest)
 		return
 	}
 
 	_, err = o.db.Exec("INSERT INTO users (login, password) VALUES (?, ?)", req.Login, string(hashedPassword))
 	if err != nil {
-		http.Error(w, "User already exists", http.StatusConflict)
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
+			http.Error(w, "User already exists", http.StatusConflict)
+		} else {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -103,7 +109,7 @@ func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Login    string `json:"login"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeRequest(w, r, &req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -114,6 +120,10 @@ func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	err := o.db.QueryRow("SELECT id, password FROM users WHERE login = ?", req.Login).Scan(&user.ID, &user.Password)
 	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
 		http.Error(w, "Invalid login or password", http.StatusUnauthorized)
 		return
 	}
@@ -126,11 +136,11 @@ func (o *Orchestrator) handleLogin(w http.ResponseWriter, r *http.Request) {
 	expirationTime := time.Now().Add(24 * time.Hour)
 	claims := &struct {
 		UserID int `json:"user_id"`
-		jwt.StandardClaims
+		jwt.RegisteredClaims
 	}{
 		UserID: user.ID,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
 	}
 
@@ -165,19 +175,19 @@ func (o *Orchestrator) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		claims := &struct {
 			UserID int `json:"user_id"`
-			jwt.StandardClaims
+			jwt.RegisteredClaims
 		}{}
 
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 			return o.jwtSecret, nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 
-		if err != nil || !token.Valid {
+		if err != nil || !token.Valid || claims.UserID <= 0 {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
+		ctx := context.WithValue(r.Context(), userIDKey{}, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -188,7 +198,7 @@ func (o *Orchestrator) expressionByIDHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userID := r.Context().Value("user_id").(int)
+	userID := r.Context().Value(userIDKey{}).(int)
 	id := r.URL.Path[len("/api/v1/expressions/"):]
 
 	var expr struct {
@@ -254,7 +264,7 @@ func (o *Orchestrator) handleExpressions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userID := r.Context().Value("user_id").(int)
+	userID := r.Context().Value(userIDKey{}).(int)
 
 	rows, err := o.db.Query(
 		"SELECT id, expression, status, result, created_at FROM expressions WHERE user_id = ?",
@@ -266,14 +276,13 @@ func (o *Orchestrator) handleExpressions(w http.ResponseWriter, r *http.Request)
 	}
 	defer rows.Close()
 
-	var expressions []struct {
+	expressions := make([]struct {
 		ID         string   `json:"id"`
 		Expression string   `json:"expression"`
 		Status     string   `json:"status"`
 		Result     *float64 `json:"result,omitempty"`
 		CreatedAt  string   `json:"created_at"`
-	}
-
+	}, 0)
 	for rows.Next() {
 		var expr struct {
 			ID         string
@@ -317,49 +326,12 @@ func (o *Orchestrator) handleExpressions(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(expressions)
 }
 
-func (o *Orchestrator) Start(grpcPort, httpPort string) error {
-	// Start gRPC server
-	lis, err := net.Listen("tcp", ":"+grpcPort)
-	if err != nil {
-		return fmt.Errorf("failed to listen: %v", err)
-	}
-
-	grpcServer := grpc.NewServer()
-	pb.RegisterOrchestratorServer(grpcServer, o)
-
-	go func() {
-		log.Printf("gRPC server listening on :%s", grpcPort)
-		if err := grpcServer.Serve(lis); err != nil {
-			log.Printf("gRPC server failed: %v", err)
-		}
-	}()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/register", o.handleRegister)
-	mux.HandleFunc("/api/v1/login", o.handleLogin)
-	mux.HandleFunc("/api/v1/calculate", o.authMiddleware(o.handleCalculate))
-	mux.HandleFunc("/api/v1/expressions", o.authMiddleware(o.handleExpressions))
-	mux.HandleFunc("/api/v1/expressions/", o.authMiddleware(o.expressionByIDHandler))
-
-	server := &http.Server{
-		Addr:    ":" + httpPort,
-		Handler: o.enableCORS(mux),
-	}
-
-	go func() {
-		log.Printf("HTTP server listening on :%s", httpPort)
-		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			log.Printf("HTTP server failed: %v", err)
-		}
-	}()
-
-	return nil
-}
-
 func (o *Orchestrator) SetOperationTime(op string, timeMs int) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	o.opTimes[op] = timeMs
+	if timeMs >= 0 && timeMs <= 1000 {
+		o.opTimes[op] = timeMs
+	}
 }
 
 func (o *Orchestrator) GetTask(ctx context.Context, req *pb.TaskRequest) (*pb.Task, error) {
@@ -381,18 +353,18 @@ func (o *Orchestrator) GetTask(ctx context.Context, req *pb.TaskRequest) (*pb.Ta
 func (o *Orchestrator) SubmitResult(ctx context.Context, res *pb.Result) (*pb.ResultResponse, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-
+	if res == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing result")
+	}
 	if !o.processing[res.Id] {
 		return nil, status.Error(codes.NotFound, "task not found")
 	}
 
+	if math.IsNaN(res.Result) || math.IsInf(res.Result, 0) {
+		return nil, status.Error(codes.InvalidArgument, "non-finite result")
+	}
 	o.results[res.Id] = res.Result
 	delete(o.processing, res.Id)
-
-	_, err := o.db.Exec("UPDATE expressions SET status = 'completed', result = ? WHERE id = ?", res.Result, res.Id)
-	if err != nil {
-		log.Printf("Failed to update DB: %v", err)
-	}
 
 	log.Printf("Result received for task %s: %f", res.Id, res.Result)
 	return &pb.ResultResponse{Success: true}, nil
@@ -404,19 +376,46 @@ func (o *Orchestrator) handleCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(int)
+	userID := r.Context().Value(userIDKey{}).(int)
 
 	var input struct {
 		Expression string `json:"expression"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeRequest(w, r, &input); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	taskID := fmt.Sprintf("%d%d", userID, atomic.AddUint64(&o.taskCounter, 1))
+	expr, err := parseExpression(input.Expression)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	// Admission and shutdown are synchronized so Wait cannot race with Add.
+	o.mu.Lock()
+	if o.ctx.Err() != nil || len(o.slots) == cap(o.slots) {
+		o.mu.Unlock()
+		http.Error(w, "Calculator is busy or shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	o.slots <- struct{}{}
+	o.jobs.Add(1)
+	o.mu.Unlock()
+	scheduled := false
+	defer func() {
+		if !scheduled {
+			<-o.slots
+			o.jobs.Done()
+		}
+	}()
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		http.Error(w, "Failed to generate ID", 500)
+		return
+	}
+	taskID := hex.EncodeToString(id[:])
 
-	_, err := o.db.Exec(
+	_, err = o.db.Exec(
 		"INSERT INTO expressions (id, user_id, expression, status) VALUES (?, ?, ?, ?)",
 		taskID, userID, input.Expression, "processing",
 	)
@@ -425,71 +424,11 @@ func (o *Orchestrator) handleCalculate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go o.processExpression(input.Expression, userID, taskID)
+	scheduled = true
+	go o.processExpression(expr, taskID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"id": taskID})
-}
-
-func (o *Orchestrator) processExpression(exprStr string, userID int, taskID string) {
-	expr, err := parser.ParseExpr(exprStr)
-	if err != nil {
-		o.db.Exec("UPDATE expressions SET status = ? WHERE id = ?", "error", taskID)
-		return
-	}
-
-	result, err := o.eval(expr)
-	if err != nil {
-		o.db.Exec("UPDATE expressions SET status = ? WHERE id = ?", "error", taskID)
-		return
-	}
-
-	_, err = o.db.Exec("UPDATE expressions SET status = ?, result = ? WHERE id = ?",
-		"completed", result, taskID)
-	if err != nil {
-		log.Printf("Failed to update expression status: %v", err)
-	}
-}
-
-func (o *Orchestrator) eval(expr ast.Expr) (float64, error) {
-	switch e := expr.(type) {
-	case *ast.BasicLit:
-		return strconv.ParseFloat(e.Value, 64)
-
-	case *ast.ParenExpr:
-		return o.eval(e.X)
-
-	case *ast.BinaryExpr:
-		left, err := o.eval(e.X)
-		if err != nil {
-			return 0, err
-		}
-
-		right, err := o.eval(e.Y)
-		if err != nil {
-			return 0, err
-		}
-
-		if right == 0 && e.Op.String() == "/" {
-			return 0, fmt.Errorf("division by zero")
-		}
-
-		taskID := fmt.Sprintf("task_%d", atomic.AddUint64(&o.taskCounter, 1))
-		opTime := o.opTimes[e.Op.String()]
-
-		task := &pb.Task{
-			Id:            taskID,
-			Arg1:          left,
-			Arg2:          right,
-			Operation:     e.Op.String(),
-			OperationTime: int32(opTime),
-		}
-
-		o.addTask(task)
-		return o.waitForResult(taskID)
-	}
-
-	return 0, errors.New("unsupported expression")
 }
 
 func (o *Orchestrator) addTask(task *pb.Task) {
@@ -500,91 +439,57 @@ func (o *Orchestrator) addTask(task *pb.Task) {
 	log.Printf("Task added: %s %f %s %f", task.Id, task.Arg1, task.Operation, task.Arg2)
 }
 
-func (o *Orchestrator) waitForResult(taskID string) (float64, error) {
-	for {
-		time.Sleep(100 * time.Millisecond)
-
+func (o *Orchestrator) waitForResult(ctx context.Context, taskID string) (float64, error) {
+	defer func() {
 		o.mu.Lock()
-		if result, exists := o.results[taskID]; exists {
-			delete(o.results, taskID)
-			o.mu.Unlock()
+		defer o.mu.Unlock()
+		delete(o.processing, taskID)
+		delete(o.results, taskID)
+		for i, task := range o.tasks {
+			if task.Id == taskID {
+				o.tasks = append(o.tasks[:i], o.tasks[i+1:]...)
+				break
+			}
+		}
+	}()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-ticker.C:
+		}
+		o.mu.Lock()
+		result, exists := o.results[taskID]
+		o.mu.Unlock()
+		if exists {
 			return result, nil
 		}
-		o.mu.Unlock()
 	}
 }
 
-func InitDB(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, err
+type userIDKey struct{}
+
+func decodeRequest(w http.ResponseWriter, r *http.Request, target interface{}) error {
+	r.Body = http.MaxBytesReader(w, r.Body, 8192)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
 	}
-
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			login TEXT UNIQUE NOT NULL,
-			password TEXT NOT NULL
-		);
-		CREATE TABLE IF NOT EXISTS expressions (
-			id TEXT PRIMARY KEY,
-			user_id INTEGER NOT NULL,
-			expression TEXT NOT NULL,
-			status TEXT NOT NULL,
-			result REAL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY(user_id) REFERENCES users(id)
-		);
-	`)
-	if err != nil {
-		return nil, err
+	if err := decoder.Decode(new(interface{})); err != io.EOF {
+		return errors.New("expected one JSON object")
 	}
-
-	return db, nil
-}
-
-func RunOrchestrator() error {
-
-	db, err := InitDB("./data.db")
-
-	if err != nil {
-		return fmt.Errorf("failed to init DB: %v", err)
-	}
-
-	
-
-	jwtSecret := []byte(os.Getenv("JWT_SECRET"))
-	if len(jwtSecret) == 0 {
-		jwtSecret = []byte("default-secret-key")
-	}
-	orch := NewOrchestrator(db, jwtSecret)
-
-	if t, err := strconv.Atoi(os.Getenv("TIME_ADDITION_MS")); err == nil {
-		orch.SetOperationTime("+", t)
-	}
-	if t, err := strconv.Atoi(os.Getenv("TIME_SUBTRACTION_MS")); err == nil {
-		orch.SetOperationTime("-", t)
-	}
-	if t, err := strconv.Atoi(os.Getenv("TIME_MULTIPLICATION_MS")); err == nil {
-		orch.SetOperationTime("*", t)
-	}
-	if t, err := strconv.Atoi(os.Getenv("TIME_DIVISION_MS")); err == nil {
-		orch.SetOperationTime("/", t)
-	}
-
-	grpcPort := os.Getenv("GRPC_PORT")
-	if grpcPort == "" {
-		grpcPort = "50051"
-	}
-
-	httpPort := os.Getenv("HTTP_PORT")
-	if httpPort == "" {
-		httpPort = "8080"
-	}
-
-	if err := orch.Start(grpcPort, httpPort); err != nil {
-		return fmt.Errorf("failed to start servers: %v", err)
-	}
-
 	return nil
+}
+
+func (o *Orchestrator) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/register", o.handleRegister)
+	mux.HandleFunc("/api/v1/login", o.handleLogin)
+	mux.HandleFunc("/api/v1/calculate", o.authMiddleware(o.handleCalculate))
+	mux.HandleFunc("/api/v1/expressions", o.authMiddleware(o.handleExpressions))
+	mux.HandleFunc("/api/v1/expressions/", o.authMiddleware(o.expressionByIDHandler))
+	return o.enableCORS(mux)
 }

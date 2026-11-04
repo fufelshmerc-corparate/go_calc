@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package calc;
 
-option go_package = "api/calc";
+option go_package = "github.com/fufelshmerc-corparate/go_calc/api/calc;calc";
 
 service Orchestrator {
   rpc GetTask (TaskRequest) returns (Task) {}

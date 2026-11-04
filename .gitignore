@@ -1,0 +1,11 @@
+# Local configuration, databases, binaries and test artifacts
+.env
+.env.*
+*.db
+*.db-*
+*.sqlite*
+/bin/
+coverage.out
+*.test
+*.prof
+CHANGES_REPORT.md
