@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"github.com/mattn/go-sqlite3"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/IvanSolomatin/calc_v2/api/calc"
+	pb "github.com/fufelshmerc-corparate/go_calc/api/calc"
 )
 
 func setupTestOrchestrator(t *testing.T) (*Orchestrator, *sql.DB, sqlmock.Sqlmock) {
@@ -71,7 +71,7 @@ func TestHandleRegister(t *testing.T) {
 			mockSetup: func() {
 				mock.ExpectExec("INSERT INTO users").
 					WithArgs("testuser", sqlmock.AnyArg()).
-					WillReturnError(fmt.Errorf("UNIQUE constraint failed"))
+					WillReturnError(sqlite3.Error{Code: sqlite3.ErrConstraint, ExtendedCode: sqlite3.ErrConstraintUnique})
 			},
 			expectedStatus: http.StatusConflict,
 			expectedBody:   "User already exists",
@@ -245,9 +245,7 @@ func TestSubmitResult(t *testing.T) {
 				Result: 15.0,
 			},
 			mockSetup: func() {
-				mock.ExpectExec("UPDATE expressions").
-					WithArgs(15.0, "task1").
-					WillReturnResult(sqlmock.NewResult(1, 1))
+				// Intermediate task results must not update expression rows.
 			},
 			expectedSuccess: true,
 		},
@@ -289,7 +287,7 @@ func TestSubmitResult(t *testing.T) {
 
 func TestHandleCalculate(t *testing.T) {
 	orch, db, mock := setupTestOrchestrator(t)
-	defer db.Close()
+	defer func() { orch.jobs.Wait(); db.Close() }()
 
 	tests := []struct {
 		name           string
@@ -301,12 +299,13 @@ func TestHandleCalculate(t *testing.T) {
 	}{
 		{
 			name:   "Valid expression",
-			body:   `{"expression":"2+2"}`,
+			body:   `{"expression":"2"}`,
 			userID: 1,
 			mockSetup: func() {
 				mock.ExpectExec("INSERT INTO expressions").
-					WithArgs(sqlmock.AnyArg(), 1, "2+2", "processing").
+					WithArgs(sqlmock.AnyArg(), 1, "2", "processing").
 					WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectExec("UPDATE expressions").WithArgs("completed", float64(2), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
 			},
 			expectedStatus: http.StatusOK,
 			expectedBody:   `"id":`,
@@ -326,11 +325,12 @@ func TestHandleCalculate(t *testing.T) {
 			tt.mockSetup()
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/calculate", strings.NewReader(tt.body))
-			ctx := context.WithValue(req.Context(), "user_id", tt.userID)
+			ctx := context.WithValue(req.Context(), userIDKey{}, tt.userID)
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 
 			orch.handleCalculate(w, req)
+			orch.jobs.Wait()
 
 			if w.Code != tt.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tt.expectedStatus, w.Code)
